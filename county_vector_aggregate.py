@@ -10,14 +10,16 @@ from processing.core.Processing import Processing
 class county_vector_aggregate(QgsProcessingAlgorithm):
     
     # Init
-    
-    f = open('C:/Users/Shriyash/Documents/DoA Modeling/DoA/iowa_soil/nccpi2cs - 500.csv', 'w+')
 
     Processing.initialize()
     feedback = QgsProcessingFeedback()
 
-    state_abbr = 'IA'
+    state_abbr = 'IL'
+    state_name = 'illinois'
     field = 'nccpi2cs'
+    
+    f = open('C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/nccpi2cs.csv', 'w+')
+    
     
     for i in range(1,298, 2):
         #county_num = '051'
@@ -27,9 +29,9 @@ class county_vector_aggregate(QgsProcessingAlgorithm):
         # Find County
         extract_params = {
             'EXPRESSION': '\"AREASYMBOL\" = \'' + state_abbr + county_num + '\'',
-            'INPUT': 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/iowa_soil/gSSURGO_IA.gdb|layername=SAPOLYGON',
+            'INPUT': 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/soils/gssurgo_g_'+state_abbr.lower()+'/gSSURGO_'+state_abbr+'.gdb|layername=SAPOLYGON',
             #'OUTPUT': 'memory:'
-            'OUTPUT': 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/iowa_soil/test/extract_' + state_abbr + county_num + '.shp',
+            'OUTPUT': 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/test/extract_' + state_abbr + county_num + '.shp',
         }
         
         extract_res = processing.run('native:extractbyexpression', extract_params, feedback=feedback)
@@ -44,25 +46,38 @@ class county_vector_aggregate(QgsProcessingAlgorithm):
             'JOIN_STYLE': 0,
             'MITER_LIMIT': 2,
             #'OUTPUT': 'memory:',
-            'OUTPUT': 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/iowa_soil/test/buffer_'+state_abbr+county_num+'.shp',
+            'OUTPUT': 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/test/buffer_'+state_abbr+county_num+'.shp',
             'SEGMENTS': 5
         }
         bf_res = processing.run('native:buffer', parameters=buffer_params, feedback=feedback)
-        buffer_layer = QgsVectorLayer(bf_res['OUTPUT'], "new_stats")
+        buffer_layer = QgsVectorLayer(bf_res['OUTPUT'], "new_clip")
         
-        #Calculate 
-        stats_params = {
-            'COLUMN_PREFIX' : '_',
-            'INPUT_RASTER' : 'C:/Users/Shriyash/Desktop/corn_layers/rasters/qgs2r1.tif',
-            'INPUT_VECTOR' : buffer_layer,
-            'RASTER_BAND' : 1,
-            'STATS' : [2]
+        
+        # Clip Raster
+        clip_params = {
+            'ALPHA_BAND' : False, 
+            'CROP_TO_CUTLINE' : True, 
+            'DATA_TYPE' : 5, 
+            'INPUT' : 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/rasterized_soil_'+state_abbr+'.tif',
+            'KEEP_RESOLUTION' : False,
+            'MASK' : buffer_layer, 
+            'NODATA' : None,
+            'OPTIONS' : '', 
+            'OUTPUT' : 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/test/clip_'+state_abbr+county_num+'.tif',
         }
-        stats_res = processing.run('qgis:zonalstatistics', stats_params, feedback=feedback)
+        clip_res = processing.run('gdal:cliprasterbymasklayer', parameters=clip_params, feedback=feedback)
+        clip_layer = QgsRasterLayer(clip_res['OUTPUT'], "new_stats")
+        
+        # Get Statistics
+        stats_params = {
+            'BAND' : 1,
+            'INPUT' : clip_layer, 
+            'OUTPUT_HTML_FILE' : 'C:/Users/Shriyash/Documents/DoA Modeling/DoA/'+state_name+'_soil/test/stats_'+state_abbr+county_num+'.html'
+        }
+        stats_res = processing.run('qgis:rasterlayerstatistics', parameters=stats_params)
         
         # Write to file
-        for feature in buffer_layer.getFeatures():
-            mean = feature["_mean"]
-            f.write(state_abbr+county_num+','+str(mean)+'\n')
+        f.write(state_abbr+county_num+','+str(stats_res['MEAN'])+'\n')
         
     f.close()
+
